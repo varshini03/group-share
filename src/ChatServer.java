@@ -1,10 +1,13 @@
 import javax.websocket.*;
 import javax.websocket.server.ServerEndpoint;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.nio.ByteBuffer;
+import java.net.*;
+import java.nio.*;
+import java.nio.file.Files;
 import java.util.*;
-import java.io.IOException;
+import java.io.*;
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpExchange;
 
 @ServerEndpoint(value = "/chat")
 public class ChatServer {
@@ -54,7 +57,9 @@ public class ChatServer {
                 try (FileOutputStream fos = new FileOutputStream(file, true)) {
                     fos.write(byteBuffer.array());
                 }
-                broadcast("FILE:" + currentFileName); // Notify clients about the new file
+                String fileUrl = "http://localhost:8081/download/" + URLEncoder.encode(currentFileName, "UTF-8");
+
+                broadcast("FILE_SHARED:" + fileUrl);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -94,5 +99,32 @@ public class ChatServer {
         if (!uploadDir.exists()) {
             uploadDir.mkdir();
         }
+    }
+
+    public static void serveFiles() {
+        new Thread(() -> {
+            try {
+                HttpServer server = HttpServer.create(new InetSocketAddress(8081), 0);
+                server.createContext("/download", exchange -> {
+                    String fileName = URLDecoder.decode(exchange.getRequestURI().getPath().substring(10), "UTF-8");
+                    File file = new File(UPLOAD_DIR, fileName);
+
+                    if (file.exists()) {
+                        byte[] fileBytes = Files.readAllBytes(file.toPath());
+                        exchange.sendResponseHeaders(200, fileBytes.length);
+                        OutputStream os = exchange.getResponseBody();
+                        os.write(fileBytes);
+                        os.close();
+                    } else {
+                        exchange.sendResponseHeaders(404, -1);
+                    }
+                });
+                server.setExecutor(null);
+                server.start();
+                System.out.println("HTTP server started on port 8080 for file downloads.");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 }
