@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat App</title>
+</head>
+<body>
+<h1>WebSocket Chat</h1>
+<input id="username" placeholder="Enter username" />
+<button onclick="signIn()">Sign In</button>
+<br />
+<textarea id="chat" cols="50" rows="10" readonly></textarea>
+<br />
+<input id="message" placeholder="Enter message" />
+<button onclick="sendMessage()">Send</button>
+<br /><br />
+<h3>File Sharing</h3>
+<input type="file" id="fileInput" />
+<button onclick="sendFile()">Upload File</button>
+<script>
+    let ws;
+    let username;
+
+    function signIn() {
+        username = document.getElementById("username").value;
+        if (!username) {
+            alert("Enter a username!");
+            return;
+        }
+
+        ws = new WebSocket("ws://localhost:8080/chat");
+        ws.binaryType = "arraybuffer";
+
+        ws.onopen = () => {
+            ws.send("SIGN_IN:" + username);
+            console.log("Connected to WebSocket");
+        };
+
+        ws.onmessage = (event) => {
+            const chatBox = document.getElementById("chat");
+            if (event.data.startsWith("FILE:")) {
+                const fileName = event.data.substring("FILE:".length);
+                chatBox.value += `${username} shared a file: ${fileName}\n`;
+            } else {
+                chatBox.value += event.data + "\n";
+            }
+        };
+
+        ws.onclose = () => {
+            console.log("Disconnected from WebSocket");
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket Error:", error);
+        };
+    }
+
+    function sendMessage() {
+        const message = document.getElementById("message").value;
+        if (ws && message) {
+            ws.send("CHAT:" + message);
+            document.getElementById("message").value = "";
+        }
+    }
+
+        function sendFile() {
+        const fileInput = document.getElementById("fileInput");
+        const file = fileInput.files[0];
+
+        if (!file) {
+            alert("Please select a file to upload.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function (event) {
+            const fileName = file.name;
+            ws.send("FILE_NAME:" + fileName); // Send filename first
+            ws.send(event.target.result); // Send file content as binary
+            alert("File uploaded successfully.");
+        };
+        reader.readAsArrayBuffer(file); // Read file as binary data
+    }
+
+    window.onbeforeunload = () => {
+        if (ws) {
+            ws.send("SIGN_OUT");
+            ws.close();
+        }
+    };
+</script>
+</body>
+</html>
